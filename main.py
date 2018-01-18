@@ -2,27 +2,17 @@ import flask
 import linkbook_user as lu
 from flask import Flask, render_template, session
 import flask_login
-from flask_pymongo import MongoClient
-from werkzeug.security import generate_password_hash
+from flask_pymongo import PyMongo
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = "thalooslinkbooktest"
 
-client = MongoClient('localhost:27017')
-db = client.UserData
-
-db.UserData.insert_one(
-            {
-            "id": "thaloo@linkbook.com",
-            "name":"Thaloo Jack White",
-            "pasword":"park7591"
-            })
-
+mongo = PyMongo(app)
 login_manager = flask_login.LoginManager()
 login_manager.init_app(app)
 
-
-users = {'thaloo@linkbook.com': {'password': 'park7591'}}
+users={}
 
 @app.route('/', methods=['GET', 'POST'])
 def hello_world():
@@ -30,20 +20,45 @@ def hello_world():
         if session.get('logged_in') == True:
             return flask.redirect(flask.url_for('protected'))
         else:
-            return render_template('login_form.html')
+            return render_template('index.html')
 
     email = flask.request.form['email']
-    if flask.request.form['password'] == users[email]['password']:
+    try:
+        user_id = mongo.db.profiles.find_one_or_404({"email":email})
+    except:
+        print("User "+email+" Not Found!")
+        return flask.redirect(flask.url_for('hello_world'))
+    if check_password_hash(mongo.db.profiles.find_one({"email":email})['password'],flask.request.form['password']):
         user = lu.User(email)
         flask_login.login_user(user)
+        users[email] = mongo.db.profiles.find_one({"email":email})['password']
         return flask.redirect(flask.url_for('protected'))
 
-    return 'Bad login'
-    return render_template('index.html')
+    return flask.redirect(flask.url_for('hello_world'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    return render_template('index.html')
+    if flask.request.method == 'GET':
+        return render_template('user_register.html')
+    email = flask.request.form['email']
+    try:
+        user_id = mongo.db.profiles.find_one_or_404({"email":email})
+    except:
+        print("User "+email+" Not Found!")
+        r_email = flask.request.form['email']
+        r_password = generate_password_hash(flask.request.form['password'])
+        r_name = flask.request.form['name']
+
+        try:
+            mongo.db.profiles.insert_one({
+                "email":r_email,
+                "password":r_password,
+                "name":r_name
+            })
+        except:
+            print("Error during insertion data!!!!")
+        return flask.redirect(flask.url_for('hello_world'))
+    return render_template('user_register.html')
 
 @app.route('/user_info')
 @flask_login.login_required
@@ -76,13 +91,12 @@ def request_loader(request):
 
     # DO NOT ever store passwords in plaintext and always compare password
     # hashes using constant-time comparison!
-    user.is_authenticated = request.form['password'] == users[email]['password']
+    user.is_authenticated = check_password_hash(users[email]['password'],request.form['password'])
 
     return user
-
 @login_manager.unauthorized_handler
 def unauthorized_handler():
     return 'Unauthorized'
 
 if __name__ == '__main__':
-    app.run()
+    app.run("0.0.0.0", port = 80)
