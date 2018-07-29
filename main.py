@@ -6,7 +6,7 @@ from flask_pymongo import PyMongo
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = "thalooslinkbooktest"
+app.secret_key = "secretkey"
 
 mongo = PyMongo(app)
 login_manager = flask_login.LoginManager()
